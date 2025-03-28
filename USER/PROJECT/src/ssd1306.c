@@ -11,7 +11,7 @@
 #define SSD1306_TRANSFER_CMD    0x00
 #define SSD1306_TRANSFER_DATA   0x40
 
-static u8 oled_buffer[8][128] = {0};
+static u8 oled_buffer[1026] = {0x78,0x40};
 
 static void i2c_init(void)
 {
@@ -47,29 +47,6 @@ static void i2c_init(void)
     // printf("%x %x %x\n",I2C1->CR1,I2C1->SR1,I2C1->SR2);
 }
 
-static void dma_send(void)
-{
-    //起始信号
-    I2C_GenerateSTART(I2C1,ENABLE);
-   
-    //等信号发送成功
-    while(I2C_CheckEvent(I2C1,I2C_EVENT_MASTER_MODE_SELECT)!= SUCCESS );
-    //printf("%d\n",__LINE__);
-
-    //发送从地址
-    I2C_Send7bitAddress(I2C1,SSD1306_SLAVE_ADDR<<1,I2C_Direction_Transmitter);
-   
-    //等信号发送成功
-    while(I2C_CheckEvent(I2C1,I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED) != SUCCESS);
-    //printf("%d\n",__LINE__);
-
-    //发送数据
-    I2C_SendData(I2C1,SSD1306_TRANSFER_DATA);
-   
-    //等信号发送成功
-    while(I2C_CheckEvent(I2C1,I2C_EVENT_MASTER_BYTE_TRANSMITTING) != SUCCESS);
-}
-
 
 static void dma_init(void)
 {
@@ -81,7 +58,7 @@ static void dma_init(void)
     dma_config.DMA_PeripheralBaseAddr   =   (uint32_t)&(I2C1->DR);
     dma_config.DMA_Memory0BaseAddr      =   (uint32_t)oled_buffer;
     dma_config.DMA_DIR                  =   DMA_DIR_MemoryToPeripheral;
-    dma_config.DMA_BufferSize           =   1024;
+    dma_config.DMA_BufferSize           =   sizeof(oled_buffer);
     dma_config.DMA_PeripheralInc        =   DMA_PeripheralInc_Disable;
     dma_config.DMA_MemoryInc            =   DMA_MemoryInc_Enable;
     dma_config.DMA_PeripheralDataSize   =   DMA_PeripheralDataSize_Byte;
@@ -96,7 +73,7 @@ static void dma_init(void)
 
     DMA_Init(DMA1_Stream0,&dma_config);
     // DMA_ITConfig(DMA1_Stream7, DMA_IT_TC | DMA_IT_TE, ENABLE);
-    dma_send();
+    // dma_send();
     DMA_Cmd(DMA1_Stream0,ENABLE);
     I2C_DMACmd(I2C1,ENABLE);
 }
@@ -144,7 +121,7 @@ static void oled_display(void)
         i2c_send(0x00,SSD1306_TRANSFER_CMD);
         i2c_send(0x10,SSD1306_TRANSFER_CMD);
         for(j=0;j<128;j++) {
-            i2c_send(oled_buffer[i][j],SSD1306_TRANSFER_DATA);
+            i2c_send(oled_buffer[i*128+j],SSD1306_TRANSFER_DATA);
         }
     }
 }
@@ -230,8 +207,8 @@ void ssd1306_init(void)
 
     //设置内存寻址模式
     i2c_send(0x20,SSD1306_TRANSFER_CMD);
-    // i2c_send(0x00,SSD1306_TRANSFER_CMD);
-    i2c_send(0x02,SSD1306_TRANSFER_CMD);
+    i2c_send(0x00,SSD1306_TRANSFER_CMD);
+    // i2c_send(0x02,SSD1306_TRANSFER_CMD);
 
     //设置列地址范围
     i2c_send(0x21,SSD1306_TRANSFER_CMD);
@@ -246,7 +223,7 @@ void ssd1306_init(void)
     //打开屏幕显示
     i2c_send(0xAF,SSD1306_TRANSFER_CMD);
 
-    // dma_init();
+    dma_init();
 
     // // memset(oled_buffer,0,sizeof(oled_buffer));
     // vTaskDelay(3000);
@@ -254,7 +231,7 @@ void ssd1306_init(void)
     // memset(oled_buffer,-1,sizeof(oled_buffer));
     // printf("%x\n",oled_buffer[0][0]);
 
-    // while(1);
+    while(1);
 
     oled_clear(0);
     vTaskDelay(1000);
