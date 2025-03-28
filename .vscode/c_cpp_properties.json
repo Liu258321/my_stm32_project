@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "name": "Win32",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "D:\\1K5\\st32\\STM32F429IG_CODE-FREERTOS\\CORE",
+                "D:\\1K5\\st32\\STM32F429IG_CODE-FREERTOS\\FWLIB\\inc",
+                "D:\\1K5\\st32\\STM32F429IG_CODE-FREERTOS\\USER\\PROJECT\\inc",
+                "D:\\1K5\\st32\\STM32F429IG_CODE-FREERTOS\\FreeRTOS\\include",
+                "D:\\1K5\\st32\\STM32F429IG_CODE-FREERTOS\\USER\\PROJECT\\eMPL"
+            ],
+            "defines": [
+                "_DEBUG",
+                "UNICODE",
+                "_UNICODE",
+                "STM32F429_439xx",
+                "USE_STDPERIPH_DRIVER",
+                "__CC_ARM"
+            ]
+        }
+    ],
+    "version": 4
+}
