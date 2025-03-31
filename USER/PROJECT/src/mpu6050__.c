@@ -14,6 +14,8 @@ void IIC_Init(void)
     RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOB, ENABLE);//使能GPIOB时钟
     RCC_APB1PeriphClockCmd(RCC_APB1Periph_I2C2,ENABLE);//使能I2C2时钟
 
+    I2C_DeInit(I2C2);
+
     GPIO_InitTypeDef  GPIO_InitStructure={0};
     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_10 | GPIO_Pin_11;
     GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF;//复用功能

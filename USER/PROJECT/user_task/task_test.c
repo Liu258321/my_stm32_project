@@ -7,6 +7,7 @@
 #include "inv_mpu.h"
 #include "watchdog.h"
 #include "ssd1306.h"
+#include "key.h"
 #include <stdlib.h>
 
 #include "FreeRTOS.h"
@@ -16,6 +17,7 @@
 #define QUEUE_LEN       5
 
 static mpu6050_data data = {0};
+volatile u8 key_ispress = 0;
 
 static void Task_MPU6050(void *src)
 {
@@ -46,7 +48,13 @@ static void Task_SSD1306(void *src)
         // display_num(abs(data.pitch),50,2);
         // display_num(abs(data.roll),90,2);
         // printf("%.1f %.1f\n",data.pitch,data.roll);
-        display_circle(data.pitch,data.roll);
+        // display_circle(data.pitch,data.roll);
+        if(key_ispress) {
+            display_num(abs(data.pitch),50,2);
+            display_num(abs(data.roll),90,2);
+        }else {
+            display_circle(data.pitch,data.roll);
+        }
 
         xTaskResumeAll();
     }
@@ -77,6 +85,7 @@ void All_Init(void *src)
     watchdog_reload();
     ssd1306_init();
     printf("ssd1306_init success\n");
+    // Key_Interrupt_Init();
 
     TaskHandle_t task_mpu6050=0;
     xTaskCreate(Task_MPU6050,"Task_MPU6050",2048,NULL,3,&task_mpu6050);

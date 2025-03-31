@@ -11,7 +11,7 @@
 #define SSD1306_TRANSFER_CMD    0x00
 #define SSD1306_TRANSFER_DATA   0x40
 
-static u8 oled_buffer[1026] = {0x78,0x40};
+static u8 oled_buffer[8][128] = {0};
 
 static void i2c_init(void)
 {
@@ -19,6 +19,8 @@ static void i2c_init(void)
     RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOB, ENABLE);//使能GPIOB时钟
     RCC_APB1PeriphClockCmd(RCC_APB1Periph_I2C1,ENABLE);//使能I2C1时钟
     // printf("%x %x %x\n",I2C1->CR1,I2C1->SR1,I2C1->SR2);
+
+    I2C_DeInit(I2C1);
 
     GPIO_InitTypeDef  GPIO_InitStructure={0};
     GPIO_InitStructure.GPIO_Pin = GPIO_Pin_6 | GPIO_Pin_7;
@@ -47,36 +49,6 @@ static void i2c_init(void)
     // printf("%x %x %x\n",I2C1->CR1,I2C1->SR1,I2C1->SR2);
 }
 
-
-static void dma_init(void)
-{
-    RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_DMA1,ENABLE);
-    DMA_DeInit(DMA1_Stream0);
-
-    DMA_InitTypeDef dma_config;
-    dma_config.DMA_Channel              =   DMA_Channel_1;
-    dma_config.DMA_PeripheralBaseAddr   =   (uint32_t)&(I2C1->DR);
-    dma_config.DMA_Memory0BaseAddr      =   (uint32_t)oled_buffer;
-    dma_config.DMA_DIR                  =   DMA_DIR_MemoryToPeripheral;
-    dma_config.DMA_BufferSize           =   sizeof(oled_buffer);
-    dma_config.DMA_PeripheralInc        =   DMA_PeripheralInc_Disable;
-    dma_config.DMA_MemoryInc            =   DMA_MemoryInc_Enable;
-    dma_config.DMA_PeripheralDataSize   =   DMA_PeripheralDataSize_Byte;
-    dma_config.DMA_MemoryDataSize       =   DMA_MemoryDataSize_Byte;
-    dma_config.DMA_Mode                 =   DMA_Mode_Circular;
-    // dma_config.DMA_Mode                 =   DMA_Mode_Normal;
-    dma_config.DMA_Priority             =   DMA_Priority_Medium;
-    dma_config.DMA_FIFOMode             =   DMA_FIFOMode_Disable;
-    // dma_config.DMA_FIFOThreshold        =   DMA_FIFOThreshold_Full;
-    // dma_config.DMA_MemoryBurst          =   DMA_MemoryBurst_Single;
-    // dma_config.DMA_PeripheralBurst      =   DMA_PeripheralBurst_Single;
-
-    DMA_Init(DMA1_Stream0,&dma_config);
-    // DMA_ITConfig(DMA1_Stream7, DMA_IT_TC | DMA_IT_TE, ENABLE);
-    // dma_send();
-    DMA_Cmd(DMA1_Stream0,ENABLE);
-    I2C_DMACmd(I2C1,ENABLE);
-}
 
 static void i2c_send(const u8 data,const u8 cmd)
 {
@@ -113,6 +85,7 @@ static void i2c_send(const u8 data,const u8 cmd)
     I2C_GenerateSTOP(I2C1,ENABLE);
     // printf("send success\n");
 }
+
 static void oled_display(void) 
 {
     u8 i,j;
@@ -121,7 +94,7 @@ static void oled_display(void)
         i2c_send(0x00,SSD1306_TRANSFER_CMD);
         i2c_send(0x10,SSD1306_TRANSFER_CMD);
         for(j=0;j<128;j++) {
-            i2c_send(oled_buffer[i*128+j],SSD1306_TRANSFER_DATA);
+            i2c_send(oled_buffer[i][j],SSD1306_TRANSFER_DATA);
         }
     }
 }
@@ -223,66 +196,63 @@ void ssd1306_init(void)
     //打开屏幕显示
     i2c_send(0xAF,SSD1306_TRANSFER_CMD);
 
-    dma_init();
-
-    // // memset(oled_buffer,0,sizeof(oled_buffer));
-    // vTaskDelay(3000);
-    // printf("start\n");
-    // memset(oled_buffer,-1,sizeof(oled_buffer));
-    // printf("%x\n",oled_buffer[0][0]);
-
-    while(1);
+    // while(1);
 
     oled_clear(0);
     vTaskDelay(1000);
     oled_clear(1);
 }
 
-void oled_tar_display_page(u8 x,u8 y,u8 width,u8 *pic,u16 wordlen)
+static void oled_part_reflash(u8 x,u8 y_page,u8 width,u8 high) 
 {
-    u8 i;
-    for(i=0;i < wordlen;i++) {
-        if(i%width == 0) {
-            i2c_send(0xB0+(y++),SSD1306_TRANSFER_CMD);
-            i2c_send(0x0F&x,SSD1306_TRANSFER_CMD);
-            i2c_send(0x10|((x&0xF0)>>4),SSD1306_TRANSFER_CMD);
+    for(u8 i=0;i<high;i++) {
+        i2c_send(0xB0+y_page+i,SSD1306_TRANSFER_CMD);
+        i2c_send(0x0F&x,SSD1306_TRANSFER_CMD);
+        i2c_send(0x10|((x&0xF0)>>4),SSD1306_TRANSFER_CMD);
+        for(u8 j=0;j<width;j++) {
+            i2c_send(oled_buffer[i+y_page][j+x],SSD1306_TRANSFER_DATA);
         }
-        if(pic == NULL) {
-            i2c_send(0x00,SSD1306_TRANSFER_DATA);
-            continue;
-        }
-        i2c_send(pic[i],SSD1306_TRANSFER_DATA);
     }
+}
+
+void oled_tar_display_page(u8 x,u8 y,u8 width,u8 high,u8 *pic)
+{
+    u8 piclen=0;
+    for(u8 i=0;i < high;i++) {
+        for(u8 j=0;j<width;j++) {
+            if(pic == NULL) {
+                oled_buffer[y+i][x+j] = 0;
+                continue;
+            }
+            oled_buffer[y+i][x+j] = pic[piclen++];
+        }
+    }
+    oled_part_reflash(x,y,width,high);
 }
 
 void oled_tar_display(u8 x,u8 y,u8 width,u8 high,u8 *pic,u16 piclen)
 {
-    if(pic == NULL) {
-        u8 buffer[(high+8)/8*width];
-        memset(buffer,0,sizeof(buffer));
-        oled_tar_display(x,y,width,high,buffer,sizeof(buffer));
-        // oled_tar_display_page(x,y/8,width,NULL,piclen);
-        return;
-    }
     static u8 offset,pagestart_y,pageend_y,ii,i;
     offset = y % 8;
-    pagestart_y = y / 8;     //2
-    pageend_y = (y + high) / 8;      //4
+    pageend_y = (y + high) / 8;      //2+16 =18/8=2
+    y /= 8;
+    pagestart_y = y;     //0
     ii = 0;
+
     while(pagestart_y <= pageend_y) {
-        i2c_send(0xB0+(pagestart_y++),SSD1306_TRANSFER_CMD);
-        i2c_send(0x0F&x,SSD1306_TRANSFER_CMD);
-        i2c_send(0x10|((x&0xF0)>>4),SSD1306_TRANSFER_CMD);
         for(i = 0;i < width;i++,ii++) {
             if(ii < width) {
-                i2c_send(pic[ii] << offset,SSD1306_TRANSFER_DATA);
+                oled_buffer[pagestart_y][x+i] = pic[ii] << offset;
             }else if(ii < piclen){
-                i2c_send((pic[ii-width] >> (8 - offset)) | (pic[ii] << offset),SSD1306_TRANSFER_DATA);
+                oled_buffer[pagestart_y][x+i] = (pic[ii-width] >> (8 - offset)) | (pic[ii] << offset);
             }else {
-                i2c_send(pic[ii-width] >> (8 - offset),SSD1306_TRANSFER_DATA);
+                oled_buffer[pagestart_y][x+i] = pic[ii-width] >> (8 - offset);
             }
         }
+        pagestart_y++;
     }
+
+    oled_part_reflash(x,y,width,pageend_y - y +1);
 }
 
 void display_num(u32 num,u8 x,u8 y)
@@ -332,6 +302,31 @@ static u8 ball_is_center(u8 x,u8 y)
     return (x >= CIRCLE_LIMIT_X_START && x <= CIRCLE_LIMIT_X_END) && (y >= CIRCLE_LIMIT_Y_START && y <= CIRCLE_LIMIT_Y_END);
 }
 
+static void oled_tar_write(u8 x,u8 y,u8 width,u8 high,u8 *pic,u16 piclen)
+{
+    static u8 offset,pagestart_y,pageend_y,ii,i;
+    offset = y % 8;
+    pageend_y = (y + high) / 8;      //2+16 =18/8=2
+    y /= 8;
+    pagestart_y = y;     //0
+    ii = 0;
+
+    while(pagestart_y <= pageend_y) {
+        for(i = 0;i < width;i++,ii++) {
+            if(ii < width) {
+                oled_buffer[pagestart_y][x+i] ^= pic[ii] << offset;
+            }else if(ii < piclen){
+                oled_buffer[pagestart_y][x+i] ^= (pic[ii-width] >> (8 - offset)) | (pic[ii] << offset);
+            }else {
+                oled_buffer[pagestart_y][x+i] ^= pic[ii-width] >> (8 - offset);
+            }
+        }
+        pagestart_y++;
+    }
+
+    oled_part_reflash(x,y,width,pageend_y - y +1);
+}
+
 void display_circle(float pitch,float roll)
 {
     static u8 last_x = 0,last_y = 0;
@@ -345,57 +340,20 @@ void display_circle(float pitch,float roll)
     if((cur_x == last_x) && (cur_y == last_y)) {
         return;
     }
-    printf(">>%.1f>>>%d====%.1f>>>%d\n",roll,cur_x,pitch,cur_y);
-    // printf(">>%d====%d\n",cur_x,cur_y);
 
     //球和中心“十”碰撞
     if(ball_is_center(cur_x,cur_y)) {
-        // printf("is crash\n");
-        static u8 buffer[CIRCLE_HIGH_PAGE*CIRCLE_WIDTH] = {0};
-        memcpy(buffer,circle_pic,32);
-        static s8 buffer_x = 0,buffer_y = 0,center_x = 0,center_y = 0;
-        // printf("=====%d=%d=====\n",CIRCLE_CENTER_X - cur_x,(CIRCLE_CENTER_Y - cur_y)/8);
-        buffer_y = (CIRCLE_CENTER_Y - cur_y)/8;
-        if(buffer_y < 0) {
-            center_y = -buffer_y;
-            buffer_y = 0;
-        }else {
-            center_y = 0;
-        }
-        for( ;MAX(buffer_y,center_y) < CIRCLE_HIGH_PAGE;buffer_y++,center_y++) {
-            buffer_x = (CIRCLE_CENTER_X - cur_x);
-            if(buffer_x < 0) {
-                center_x = -buffer_x;
-                buffer_x = 0;
-            }else {
-                center_x = 0;
-            }
-            printf("===%d %d==%d %d\n",buffer_x,buffer_y,center_x,center_y);
-            for( ;MAX(buffer_x,center_x) < CIRCLE_WIDTH;buffer_x++,center_x++) {
-                // printf("%d %d=%d %d\n",buffer_x,buffer_y,center_x,center_y);
-                buffer[buffer_y*CIRCLE_WIDTH+buffer_x] ^= center_point[center_y*CIRCLE_WIDTH + center_x];
-            }
-            // printf("---------\n");
-        }
-        // printf("=======\n");
-        
-        // for(buffer_y = (CIRCLE_CENTER_Y - cur_y)/8,center_y = 0;buffer_y < CIRCLE_HIGH_PAGE;buffer_y++,center_y++) {
-        //     for(buffer_x = (CIRCLE_CENTER_X - cur_x),center_x = 0;buffer_x < CIRCLE_WIDTH;buffer_x++,center_x++) {
-        //         buffer[buffer_y*CIRCLE_WIDTH+buffer_x] ^= center_point[center_y*CIRCLE_WIDTH + center_x];
-        //     }
-        // }
-        // oled_clear(0);
         //擦除旧位置，拓展2像素宽度，高度拓展至3页
-        oled_tar_display_page((last_x-1 >= 0 ? last_x-1 : last_x),last_y/8,CIRCLE_WIDTH+2,NULL,54);     //54=(CIRCLE_WIDTH+2)*(CIRCLE_WIDTH/8+1)
+        oled_tar_display_page((last_x-1 >= 0 ? last_x-1 : last_x),last_y/8,CIRCLE_WIDTH+2,CIRCLE_WIDTH/8+1,NULL);     //54=(CIRCLE_WIDTH+2)*(CIRCLE_WIDTH/8+1)
 
         // oled_tar_display(56,24,16,16,center_point,sizeof(center_point));
-        oled_tar_display_page(56,3,16,center_point,sizeof(center_point));
+        oled_tar_display_page(56,3,16,2,center_point);
         //显示新位置
         // printf("sizeof%d %d\n",sizeof(buffer),sizeof(circle_pic));
-        oled_tar_display(cur_x,cur_y,CIRCLE_WIDTH,CIRCLE_WIDTH,buffer,sizeof(buffer));
+        oled_tar_write(cur_x,cur_y,CIRCLE_WIDTH,CIRCLE_WIDTH,circle_pic,sizeof(circle_pic));
     }else {
         //擦除旧位置，拓展2像素宽度，高度拓展至3页
-        oled_tar_display_page((last_x-1 >= 0 ? last_x-1 : last_x),last_y/8,CIRCLE_WIDTH+2,NULL,54);     //54=(CIRCLE_WIDTH+2)*(CIRCLE_WIDTH/8+1)
+        oled_tar_display_page((last_x-1 >= 0 ? last_x-1 : last_x),last_y/8,CIRCLE_WIDTH+2,3,NULL);     //54=(CIRCLE_WIDTH+2)*(CIRCLE_WIDTH/8+1)
         
         oled_tar_display(56,24,16,16,center_point,sizeof(center_point));
         //显示新位置

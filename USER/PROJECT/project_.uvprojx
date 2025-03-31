@@ -657,9 +657,14 @@
               <FilePath>.\src\watchdog.c</FilePath>
             </File>
             <File>
-              <FileName>ssd1306.c</FileName>
+              <FileName>ssd1306__.c</FileName>
               <FileType>1</FileType>
-              <FilePath>.\src\ssd1306.c</FilePath>
+              <FilePath>.\src\ssd1306__.c</FilePath>
+            </File>
+            <File>
+              <FileName>key.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>.\src\key.c</FilePath>
             </File>
           </Files>
         </Group>
