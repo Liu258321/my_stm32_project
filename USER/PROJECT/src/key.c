@@ -25,7 +25,7 @@ void Key_Interrupt_Init(void)
     // 4. 配置EXTI
     EXTI_InitStruct.EXTI_Line = EXTI_Line0;          // 中断线0
     EXTI_InitStruct.EXTI_Mode = EXTI_Mode_Interrupt; // 中断模式
-    EXTI_InitStruct.EXTI_Trigger = EXTI_Trigger_Rising; // 下降沿触发（按键按下时PA0拉低）
+    EXTI_InitStruct.EXTI_Trigger = EXTI_Trigger_Rising; // 上升沿触发
     EXTI_InitStruct.EXTI_LineCmd = ENABLE;           // 使能中断线
     EXTI_Init(&EXTI_InitStruct);
 

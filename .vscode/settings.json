@@ -21,7 +21,8 @@
         "task.h": "c",
         "mpu6050__.h": "c",
         "ssd1306.h": "c",
-        "oled_word.h": "c"
+        "oled_word.h": "c",
+        "hc05.h": "c"
     },
     "commentTranslate.source": "Bing"
 }

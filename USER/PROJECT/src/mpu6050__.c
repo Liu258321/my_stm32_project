@@ -164,23 +164,6 @@ u8 MPU_Read_Len(u8 addr,u8 reg,u8 len,u8 *buf)
 
 void mpu6050_getdata(mpu6050_data *data)
 {
-    static float pitch=0,roll=0,yaw=0,xacc=0,yacc=0,zacc=0;
-    data->pitch = 0;
-    data->roll  = 0;
-    for(u8 i=0;i<COLECT_TIME;i++) {
-        while(mpu_dmp_get_data(&pitch,&roll,&yaw,&xacc,&yacc,&zacc));
-        data->pitch += pitch;
-        data->roll  += roll;
-        //data->yaw   += yaw;
-        //data->x_acc += xacc;
-        //data->y_acc += yacc;
-        //data->z_acc += zacc;
-    }
-
-    data->pitch /= COLECT_TIME;
-    data->roll  /= COLECT_TIME;
-    //data->yaw   /= 20;
-    //data->x_acc /= 20;
-    //data->y_acc /= 20;
-    //data->z_acc /= 20;
+    static float yaw=0,xacc=0,yacc=0,zacc=0;
+    while(mpu_dmp_get_data(&(data->pitch),&(data->roll),&yaw,&xacc,&yacc,&zacc));
 }

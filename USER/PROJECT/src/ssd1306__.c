@@ -13,7 +13,7 @@
 
 static u8 oled_buffer[8][128] = {0};
 
-static void i2c_init(void)
+static void ssd1306_i2c_init(void)
 {
     // printf("%x %x %x\n",I2C1->CR1,I2C1->SR1,I2C1->SR2);
     RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOB, ENABLE);//使能GPIOB时钟
@@ -48,7 +48,6 @@ static void i2c_init(void)
     I2C_Cmd(I2C1,ENABLE);
     // printf("%x %x %x\n",I2C1->CR1,I2C1->SR1,I2C1->SR2);
 }
-
 
 static void i2c_send(const u8 data,const u8 cmd)
 {
@@ -86,17 +85,43 @@ static void i2c_send(const u8 data,const u8 cmd)
     // printf("send success\n");
 }
 
-static void oled_display(void) 
+void oled_display(void) 
 {
-    u8 i,j;
+    NVIC_DisableIRQ(EXTI0_IRQn);
+    static u8 i,j;
+    //起始信号
+    I2C_GenerateSTART(I2C1,ENABLE);
+   
+    //等信号发送成功
+    while(I2C_CheckEvent(I2C1,I2C_EVENT_MASTER_MODE_SELECT)!= SUCCESS );
+    //printf("%d\n",__LINE__);
+
+    //发送从地址
+    I2C_Send7bitAddress(I2C1,SSD1306_SLAVE_ADDR<<1,I2C_Direction_Transmitter);
+   
+    //等信号发送成功
+    while(I2C_CheckEvent(I2C1,I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED) != SUCCESS);
+    //printf("%d\n",__LINE__);
+
+    //发送数据
+    I2C_SendData(I2C1,SSD1306_TRANSFER_DATA);
+   
+    //等信号发送成功
+    while(I2C_CheckEvent(I2C1,I2C_EVENT_MASTER_BYTE_TRANSMITTING) != SUCCESS);
+    //printf("%d\n",__LINE__);
+   
+    //发送数据
     for(i=0;i<8;i++) {
-        i2c_send(0xB0+i,SSD1306_TRANSFER_CMD);
-        i2c_send(0x00,SSD1306_TRANSFER_CMD);
-        i2c_send(0x10,SSD1306_TRANSFER_CMD);
         for(j=0;j<128;j++) {
-            i2c_send(oled_buffer[i][j],SSD1306_TRANSFER_DATA);
+            I2C_SendData(I2C1,oled_buffer[i][j]);
+            //等信号发送成功
+            while(I2C_CheckEvent(I2C1,I2C_EVENT_MASTER_BYTE_TRANSMITTING) != SUCCESS);
         }
     }
+    // printf("%d\n",__LINE__);
+    // 发送停止信号
+    I2C_GenerateSTOP(I2C1,ENABLE);
+    NVIC_EnableIRQ(EXTI0_IRQn);
 }
 
 void oled_clear(u8 black)
@@ -108,7 +133,8 @@ void oled_clear(u8 black)
 
 void ssd1306_init(void)
 {
-    i2c_init();
+    ssd1306_i2c_init();
+    vTaskDelay(100);
     // printf("iic init success\n");
 
     //关闭屏幕显示
@@ -180,8 +206,8 @@ void ssd1306_init(void)
 
     //设置内存寻址模式
     i2c_send(0x20,SSD1306_TRANSFER_CMD);
-    i2c_send(0x00,SSD1306_TRANSFER_CMD);
-    // i2c_send(0x02,SSD1306_TRANSFER_CMD);
+    i2c_send(0x00,SSD1306_TRANSFER_CMD);        //水平寻址
+    // i2c_send(0x02,SSD1306_TRANSFER_CMD);     //页寻址
 
     //设置列地址范围
     i2c_send(0x21,SSD1306_TRANSFER_CMD);
@@ -203,17 +229,17 @@ void ssd1306_init(void)
     oled_clear(1);
 }
 
-static void oled_part_reflash(u8 x,u8 y_page,u8 width,u8 high) 
-{
-    for(u8 i=0;i<high;i++) {
-        i2c_send(0xB0+y_page+i,SSD1306_TRANSFER_CMD);
-        i2c_send(0x0F&x,SSD1306_TRANSFER_CMD);
-        i2c_send(0x10|((x&0xF0)>>4),SSD1306_TRANSFER_CMD);
-        for(u8 j=0;j<width;j++) {
-            i2c_send(oled_buffer[i+y_page][j+x],SSD1306_TRANSFER_DATA);
-        }
-    }
-}
+// static void oled_part_reflash(u8 x,u8 y_page,u8 width,u8 high) 
+// {
+//     for(u8 i=0;i<high;i++) {
+//         i2c_send(0xB0+y_page+i,SSD1306_TRANSFER_CMD);
+//         i2c_send(0x0F&x,SSD1306_TRANSFER_CMD);
+//         i2c_send(0x10|((x&0xF0)>>4),SSD1306_TRANSFER_CMD);
+//         for(u8 j=0;j<width;j++) {
+//             i2c_send(oled_buffer[i+y_page][j+x],SSD1306_TRANSFER_DATA);
+//         }
+//     }
+// }
 
 void oled_tar_display_page(u8 x,u8 y,u8 width,u8 high,u8 *pic)
 {
@@ -227,38 +253,51 @@ void oled_tar_display_page(u8 x,u8 y,u8 width,u8 high,u8 *pic)
             oled_buffer[y+i][x+j] = pic[piclen++];
         }
     }
-    oled_part_reflash(x,y,width,high);
 }
 
 void oled_tar_display(u8 x,u8 y,u8 width,u8 high,u8 *pic,u16 piclen)
 {
     static u8 offset,pagestart_y,pageend_y,ii,i;
     offset = y % 8;
-    pageend_y = (y + high) / 8;      //2+16 =18/8=2
+    pageend_y = (y + high) / 8;      
     y /= 8;
-    pagestart_y = y;     //0
+    pagestart_y = y;     
     ii = 0;
 
-    while(pagestart_y <= pageend_y) {
-        for(i = 0;i < width;i++,ii++) {
-            if(ii < width) {
-                oled_buffer[pagestart_y][x+i] = pic[ii] << offset;
-            }else if(ii < piclen){
-                oled_buffer[pagestart_y][x+i] = (pic[ii-width] >> (8 - offset)) | (pic[ii] << offset);
-            }else {
-                oled_buffer[pagestart_y][x+i] = pic[ii-width] >> (8 - offset);
+    if(pic == NULL) {
+        while(pagestart_y <= pageend_y) {
+            for(i = 0;i < width;i++,ii++) {
+                if(ii < width) {                    //首行只需偏移offset
+                    oled_buffer[pagestart_y][x+i] &= ~(0xff << offset);
+                }else if(ii < piclen){              //中间部分
+                    oled_buffer[pagestart_y][x+i] = 0;
+                }else {                             //末行偏移超出部分
+                    oled_buffer[pagestart_y][x+i] &= ~(0xff >> (8 - offset));
+                }
             }
+            pagestart_y++;
         }
-        pagestart_y++;
+    }else {
+        while(pagestart_y <= pageend_y) {
+            for(i = 0;i < width;i++,ii++) {
+                if(ii < width) {                    //首行只需偏移offset
+                    oled_buffer[pagestart_y][x+i] = pic[ii] << offset;
+                }else if(ii < piclen){              //这部分需要将首行便宜超出部分结合
+                    oled_buffer[pagestart_y][x+i] = (pic[ii-width] >> (8 - offset)) | (pic[ii] << offset);
+                }else {                             //末行偏移超出部分
+                    oled_buffer[pagestart_y][x+i] = pic[ii-width] >> (8 - offset);
+                }
+            }
+            pagestart_y++;
+        }
     }
-
-    oled_part_reflash(x,y,width,pageend_y - y +1);
 }
 
 void display_num(u32 num,u8 x,u8 y)
 {
+    oled_tar_display(x,y,24,16,NULL,48);
     if(num==0) {
-        oled_tar_display(x,y,8,16,number_word[num],sizeof(number_word[num])/sizeof(number_word[0][0]));
+        oled_tar_display(x,y,8,16,number_word[num],sizeof(number_word[num]));
         return;
     }
 
@@ -267,7 +306,7 @@ void display_num(u32 num,u8 x,u8 y)
     dig = log10(abs(num)) + 1;
     pow_ = pow(10,dig-1);
     for( ;dig>0;dig--) {
-        oled_tar_display(x,y,8,16,number_word[num/pow_],sizeof(number_word[num/pow_])/sizeof(number_word[0][0]));
+        oled_tar_display(x,y,8,16,number_word[num/pow_],sizeof(number_word[num/pow_]));
 
         num %= pow_;
         pow_ /= 10;
@@ -306,9 +345,9 @@ static void oled_tar_write(u8 x,u8 y,u8 width,u8 high,u8 *pic,u16 piclen)
 {
     static u8 offset,pagestart_y,pageend_y,ii,i;
     offset = y % 8;
-    pageend_y = (y + high) / 8;      //2+16 =18/8=2
+    pageend_y = (y + high) / 8;    
     y /= 8;
-    pagestart_y = y;     //0
+    pagestart_y = y;
     ii = 0;
 
     while(pagestart_y <= pageend_y) {
@@ -324,7 +363,21 @@ static void oled_tar_write(u8 x,u8 y,u8 width,u8 high,u8 *pic,u16 piclen)
         pagestart_y++;
     }
 
-    oled_part_reflash(x,y,width,pageend_y - y +1);
+    // oled_part_reflash(x,y,width,pageend_y - y +1);
+}
+
+void oled_center_point(void)
+{
+    static u8 i = 0;
+    for(i=0;i<16;i++) {
+        oled_buffer[3][56+i] |= 0x80;
+        oled_buffer[4][56+i] |= 0x01;
+    }
+    oled_buffer[3][63] = 0xff;
+    oled_buffer[3][64] = 0xff;
+    oled_buffer[4][63] = 0xff;
+    oled_buffer[4][64] = 0xff;
+    // oled_part_reflash(56,3,16,2);
 }
 
 void display_circle(float pitch,float roll)
@@ -340,25 +393,24 @@ void display_circle(float pitch,float roll)
     if((cur_x == last_x) && (cur_y == last_y)) {
         return;
     }
+    //擦除旧位置
+    oled_tar_display(last_x,last_y,CIRCLE_WIDTH,CIRCLE_WIDTH,NULL,sizeof(circle_pic));
+
+    oled_center_point();
 
     //球和中心“十”碰撞
     if(ball_is_center(cur_x,cur_y)) {
-        //擦除旧位置，拓展2像素宽度，高度拓展至3页
-        oled_tar_display_page((last_x-1 >= 0 ? last_x-1 : last_x),last_y/8,CIRCLE_WIDTH+2,CIRCLE_WIDTH/8+1,NULL);     //54=(CIRCLE_WIDTH+2)*(CIRCLE_WIDTH/8+1)
-
-        // oled_tar_display(56,24,16,16,center_point,sizeof(center_point));
-        oled_tar_display_page(56,3,16,2,center_point);
         //显示新位置
-        // printf("sizeof%d %d\n",sizeof(buffer),sizeof(circle_pic));
         oled_tar_write(cur_x,cur_y,CIRCLE_WIDTH,CIRCLE_WIDTH,circle_pic,sizeof(circle_pic));
     }else {
-        //擦除旧位置，拓展2像素宽度，高度拓展至3页
-        oled_tar_display_page((last_x-1 >= 0 ? last_x-1 : last_x),last_y/8,CIRCLE_WIDTH+2,3,NULL);     //54=(CIRCLE_WIDTH+2)*(CIRCLE_WIDTH/8+1)
-        
-        oled_tar_display(56,24,16,16,center_point,sizeof(center_point));
         //显示新位置
         oled_tar_display(cur_x,cur_y,CIRCLE_WIDTH,CIRCLE_WIDTH,circle_pic,sizeof(circle_pic));
     }
+
+    // oled_part_reflash(last_x,last_y/8,16,3);
+    // oled_part_reflash(56,3,16,2);
+    // oled_part_reflash(cur_x,cur_y/8,16,3);
+    oled_display();
     //更新旧位置
     last_x = cur_x;
     last_y = cur_y;

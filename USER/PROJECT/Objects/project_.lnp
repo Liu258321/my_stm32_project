@@ -53,6 +53,7 @@
 ".\objects\watchdog.o"
 ".\objects\ssd1306__.o"
 ".\objects\key.o"
+".\objects\hc05.o"
 ".\objects\croutine.o"
 ".\objects\event_groups.o"
 ".\objects\list.o"

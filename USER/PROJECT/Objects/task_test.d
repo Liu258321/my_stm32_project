@@ -47,7 +47,9 @@
 .\objects\task_test.o: .\inc\ssd1306.h
 .\objects\task_test.o: .\inc\oled_word.h
 .\objects\task_test.o: .\inc\key.h
+.\objects\task_test.o: .\inc\hc05.h
 .\objects\task_test.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stdlib.h
+.\objects\task_test.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
 .\objects\task_test.o: ..\..\FreeRTOS\include\FreeRTOS.h
 .\objects\task_test.o: C:\Keil_v5\ARM\ARMCC\Bin\..\include\stddef.h
 .\objects\task_test.o: ..\..\FreeRTOS\include\FreeRTOSConfig.h
